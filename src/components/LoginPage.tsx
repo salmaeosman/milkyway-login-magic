@@ -1,18 +1,63 @@
 import { useState } from "react";
+import { useNavigate } from "react-router-dom";
+import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Coffee, Eye, EyeOff } from "lucide-react";
+import { useToast } from "@/hooks/use-toast";
 import heroImage from "@/assets/coffeeshop-hero.jpg";
 
 const LoginPage = () => {
   const [showPassword, setShowPassword] = useState(false);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [fullName, setFullName] = useState("");
+  const [isSignUp, setIsSignUp] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const navigate = useNavigate();
+  const { toast } = useToast();
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    console.log("Login attempt", { email, password });
+    setLoading(true);
+
+    if (isSignUp) {
+      const { error } = await supabase.auth.signUp({
+        email,
+        password,
+        options: {
+          data: { full_name: fullName },
+          emailRedirectTo: window.location.origin,
+        },
+      });
+      if (error) {
+        toast({ title: "Erreur", description: error.message, variant: "destructive" });
+      } else {
+        toast({ title: "Vérifiez votre email", description: "Un lien de confirmation a été envoyé." });
+      }
+    } else {
+      const { data, error } = await supabase.auth.signInWithPassword({ email, password });
+      if (error) {
+        toast({ title: "Erreur", description: error.message, variant: "destructive" });
+      } else if (data.user) {
+        // Check roles and redirect
+        const { data: roles } = await supabase
+          .from("user_roles")
+          .select("role")
+          .eq("user_id", data.user.id);
+
+        const userRoles = (roles ?? []).map((r) => r.role);
+        if (userRoles.includes("owner")) {
+          navigate("/owner");
+        } else if (userRoles.includes("admin")) {
+          navigate("/admin");
+        } else {
+          navigate("/");
+        }
+      }
+    }
+    setLoading(false);
   };
 
   return (
@@ -44,15 +89,31 @@ const LoginPage = () => {
               <Coffee className="w-7 h-7 text-primary-foreground" />
             </div>
             <h1 className="font-display text-3xl font-bold text-foreground">
-              Welcome back
+              {isSignUp ? "Créer un compte" : "Bienvenue"}
             </h1>
             <p className="text-muted-foreground text-sm">
-              Sign in to your Shake & Brew account
+              {isSignUp ? "Inscrivez-vous sur Shake & Brew" : "Connectez-vous à votre compte"}
             </p>
           </div>
 
           {/* Form */}
           <form onSubmit={handleSubmit} className="space-y-5">
+            {isSignUp && (
+              <div className="space-y-2">
+                <Label htmlFor="fullName" className="text-sm font-medium text-foreground">
+                  Nom complet
+                </Label>
+                <Input
+                  id="fullName"
+                  type="text"
+                  placeholder="Jean Dupont"
+                  value={fullName}
+                  onChange={(e) => setFullName(e.target.value)}
+                  className="h-12 bg-card border-border font-body"
+                />
+              </div>
+            )}
+
             <div className="space-y-2">
               <Label htmlFor="email" className="text-sm font-medium text-foreground">
                 Email
@@ -63,23 +124,15 @@ const LoginPage = () => {
                 placeholder="hello@shakenandbrew.com"
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
-                className="h-12 bg-card border-border focus:ring-2 focus:ring-primary/20 font-body"
+                className="h-12 bg-card border-border font-body"
                 required
               />
             </div>
 
             <div className="space-y-2">
-              <div className="flex items-center justify-between">
-                <Label htmlFor="password" className="text-sm font-medium text-foreground">
-                  Password
-                </Label>
-                <button
-                  type="button"
-                  className="text-xs text-accent hover:text-accent/80 transition-colors font-medium"
-                >
-                  Forgot password?
-                </button>
-              </div>
+              <Label htmlFor="password" className="text-sm font-medium text-foreground">
+                Mot de passe
+              </Label>
               <div className="relative">
                 <Input
                   id="password"
@@ -87,7 +140,7 @@ const LoginPage = () => {
                   placeholder="••••••••"
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
-                  className="h-12 bg-card border-border focus:ring-2 focus:ring-primary/20 pr-11 font-body"
+                  className="h-12 bg-card border-border pr-11 font-body"
                   required
                 />
                 <button
@@ -102,45 +155,21 @@ const LoginPage = () => {
 
             <Button
               type="submit"
-              className="w-full h-12 text-sm font-semibold font-body bg-primary text-primary-foreground hover:bg-primary/90 transition-all duration-200 shadow-md hover:shadow-lg"
+              disabled={loading}
+              className="w-full h-12 text-sm font-semibold font-body bg-primary text-primary-foreground hover:bg-primary/90 shadow-md hover:shadow-lg"
             >
-              Sign in
+              {loading ? "Chargement..." : isSignUp ? "S'inscrire" : "Se connecter"}
             </Button>
           </form>
 
-          {/* Divider */}
-          <div className="relative">
-            <div className="absolute inset-0 flex items-center">
-              <div className="w-full border-t border-border" />
-            </div>
-            <div className="relative flex justify-center text-xs">
-              <span className="bg-background px-3 text-muted-foreground">or continue with</span>
-            </div>
-          </div>
-
-          {/* Social Login */}
-          <div className="grid grid-cols-2 gap-3">
-            <Button
-              variant="outline"
-              className="h-11 font-body text-sm border-border hover:bg-secondary transition-colors"
-              type="button"
-            >
-              Google
-            </Button>
-            <Button
-              variant="outline"
-              className="h-11 font-body text-sm border-border hover:bg-secondary transition-colors"
-              type="button"
-            >
-              Apple
-            </Button>
-          </div>
-
-          {/* Sign Up Link */}
+          {/* Toggle */}
           <p className="text-center text-sm text-muted-foreground">
-            Don't have an account?{" "}
-            <button className="text-accent hover:text-accent/80 font-semibold transition-colors">
-              Sign up
+            {isSignUp ? "Déjà un compte ?" : "Pas encore de compte ?"}{" "}
+            <button
+              onClick={() => setIsSignUp(!isSignUp)}
+              className="text-accent hover:text-accent/80 font-semibold transition-colors"
+            >
+              {isSignUp ? "Se connecter" : "S'inscrire"}
             </button>
           </p>
         </div>
